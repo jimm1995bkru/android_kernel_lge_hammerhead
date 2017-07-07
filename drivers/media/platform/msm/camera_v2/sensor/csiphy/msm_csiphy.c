@@ -15,6 +15,7 @@
 #include <linux/io.h>
 #include <linux/of.h>
 #include <linux/module.h>
+#include <linux/ratelimit.h>
 #include <linux/irqreturn.h>
 #include <mach/vreg.h>
 #include "msm_csiphy.h"
@@ -79,7 +80,7 @@ static int msm_csiphy_lane_config(struct csiphy_device *csiphy_dev,
 			val |= csiphy_params->csid_core;
 		}
 		msm_camera_io_w(val, csiphy_dev->clk_mux_base);
-		CDBG("%s clk mux addr %pK val 0x%x\n", __func__,
+		CDBG("%s clk mux addr %p val 0x%x\n", __func__,
 			csiphy_dev->clk_mux_base, val);
 		mb();
 	}
@@ -117,6 +118,12 @@ static int msm_csiphy_lane_config(struct csiphy_device *csiphy_dev,
 			csiphybase + MIPI_CSIPHY_LNn_CFG2_ADDR + 0x40*j);
 		msm_camera_io_w(csiphy_params->settle_cnt,
 			csiphybase + MIPI_CSIPHY_LNn_CFG3_ADDR + 0x40*j);
+#ifdef CONFIG_MACH_LGE
+		if(csiphy_dev->hw_version >= CSIPHY_VERSION_V30) {
+			msm_camera_io_w(0xFF,
+				csiphybase + MIPI_CSIPHY_LNn_CFG4_ADDR + 0x40*j);
+		}
+#endif
 		msm_camera_io_w(MIPI_CSIPHY_INTERRUPT_MASK_VAL, csiphybase +
 			MIPI_CSIPHY_INTERRUPT_MASK_ADDR + 0x4*j);
 		msm_camera_io_w(MIPI_CSIPHY_INTERRUPT_MASK_VAL, csiphybase +
@@ -177,6 +184,7 @@ static struct msm_cam_clk_info csiphy_8960_clk_info[] = {
 static struct msm_cam_clk_info csiphy_8610_clk_info[] = {
 	{"csiphy_timer_src_clk", 200000000},
 	{"csiphy_timer_clk", -1},
+	{"csi_ahb_clk", -1},
 };
 
 static struct msm_cam_clk_info csiphy_8974_clk_info[] = {
@@ -234,7 +242,7 @@ static int msm_csiphy_init(struct csiphy_device *csiphy_dev)
 			ARRAY_SIZE(csiphy_8610_clk_info), 1);
 	} else if (CSIPHY_VERSION == CSIPHY_VERSION_V30) {
 		if (!csiphy_dev->clk_mux_mem || !csiphy_dev->clk_mux_io) {
-			pr_err("%s clk mux mem %pK io %pK\n", __func__,
+			pr_err("%s clk mux mem %p io %p\n", __func__,
 				csiphy_dev->clk_mux_mem,
 				csiphy_dev->clk_mux_io);
 			rc = -ENOMEM;
@@ -337,7 +345,7 @@ static int msm_csiphy_init(struct csiphy_device *csiphy_dev)
 			ARRAY_SIZE(csiphy_8610_clk_info), 1);
 	} else if (CSIPHY_VERSION == CSIPHY_VERSION_V30) {
 		if (!csiphy_dev->clk_mux_mem || !csiphy_dev->clk_mux_io) {
-			pr_err("%s clk mux mem %pK io %pK\n", __func__,
+			pr_err("%s clk mux mem %p io %p\n", __func__,
 				csiphy_dev->clk_mux_mem,
 				csiphy_dev->clk_mux_io);
 			rc = -ENOMEM;
@@ -399,7 +407,6 @@ static int msm_csiphy_release(struct csiphy_device *csiphy_dev, void *arg)
 	struct msm_camera_csi_lane_params *csi_lane_params;
 	uint16_t csi_lane_mask;
 	csi_lane_params = (struct msm_camera_csi_lane_params *)arg;
-	csi_lane_mask = (csi_lane_params->csi_lane_mask & 0x1F);
 
 	if (!csiphy_dev || !csiphy_dev->ref_count) {
 		pr_err("%s csiphy dev NULL / ref_count ZERO\n", __func__);
@@ -412,19 +419,29 @@ static int msm_csiphy_release(struct csiphy_device *csiphy_dev, void *arg)
 		return -EINVAL;
 	}
 
-	CDBG("%s csiphy_params, lane assign %x mask = %x\n",
-		__func__,
-		csi_lane_params->csi_lane_assign,
-		csi_lane_params->csi_lane_mask);
-
 	if (csiphy_dev->hw_version < CSIPHY_VERSION_V30) {
 		csiphy_dev->lane_mask[csiphy_dev->pdev->id] = 0;
 		for (i = 0; i < 4; i++)
 			msm_camera_io_w(0x0, csiphy_dev->base +
 				MIPI_CSIPHY_LNn_CFG2_ADDR + 0x40*i);
 	} else {
+		if (!csi_lane_params) {
+			pr_err("%s:%d failed: csi_lane_params %p\n", __func__,
+				__LINE__, csi_lane_params);
+			return -EINVAL;
+		}
+		csi_lane_mask = (csi_lane_params->csi_lane_mask & 0x1F);
+
+		CDBG("%s csiphy_params, lane assign %x mask = %x\n",
+			__func__,
+			csi_lane_params->csi_lane_assign,
+			csi_lane_params->csi_lane_mask);
+
+		if (!csi_lane_mask)
+			csi_lane_mask = 0x1f;
+
 		csiphy_dev->lane_mask[csiphy_dev->pdev->id] &=
-			~(csi_lane_params->csi_lane_mask);
+			~(csi_lane_mask);
 		i = 0;
 		while (csi_lane_mask) {
 			if (csi_lane_mask & 0x1) {
@@ -474,7 +491,6 @@ static int msm_csiphy_release(struct csiphy_device *csiphy_dev, void *arg)
 	struct msm_camera_csi_lane_params *csi_lane_params;
 	uint16_t csi_lane_mask;
 	csi_lane_params = (struct msm_camera_csi_lane_params *)arg;
-	csi_lane_mask = (csi_lane_params->csi_lane_mask & 0x1F);
 
 	if (!csiphy_dev || !csiphy_dev->ref_count) {
 		pr_err("%s csiphy dev NULL / ref_count ZERO\n", __func__);
@@ -487,19 +503,29 @@ static int msm_csiphy_release(struct csiphy_device *csiphy_dev, void *arg)
 		return -EINVAL;
 	}
 
-	CDBG("%s csiphy_params, lane assign %x mask = %x\n",
-		__func__,
-		csi_lane_params->csi_lane_assign,
-		csi_lane_params->csi_lane_mask);
-
 	if (csiphy_dev->hw_version < CSIPHY_VERSION_V30) {
 		csiphy_dev->lane_mask[csiphy_dev->pdev->id] = 0;
 		for (i = 0; i < 4; i++)
 			msm_camera_io_w(0x0, csiphy_dev->base +
 				MIPI_CSIPHY_LNn_CFG2_ADDR + 0x40*i);
 	} else {
+		if (!csi_lane_params) {
+			pr_err("%s:%d failed: csi_lane_params %p\n", __func__,
+				__LINE__, csi_lane_params);
+			return -EINVAL;
+		}
+		csi_lane_mask = (csi_lane_params->csi_lane_mask & 0x1F);
+
+		CDBG("%s csiphy_params, lane assign %x mask = %x\n",
+			__func__,
+			csi_lane_params->csi_lane_assign,
+			csi_lane_params->csi_lane_mask);
+
+		if (!csi_lane_mask)
+			csi_lane_mask = 0x1f;
+
 		csiphy_dev->lane_mask[csiphy_dev->pdev->id] &=
-			~(csi_lane_params->csi_lane_mask);
+			~(csi_lane_mask);
 		i = 0;
 		while (csi_lane_mask) {
 			if (csi_lane_mask & 0x1) {
@@ -560,14 +586,6 @@ static long msm_csiphy_cmd(struct csiphy_device *csiphy_dev, void *arg)
 		rc = msm_csiphy_init(csiphy_dev);
 		break;
 	case CSIPHY_CFG:
-		if (cdata->cfg_params_size !=
-			sizeof(struct msm_camera_csiphy_params)) {
-			pr_err("%s:%d: size %d exp %d\n", __func__, __LINE__,
-				cdata->cfg_params_size,
-				sizeof(struct msm_camera_csiphy_params));
-			rc = -EINVAL;
-			break;
-		}
 		if (copy_from_user(&csiphy_params,
 			(void *)cdata->cfg.csiphy_params,
 			sizeof(struct msm_camera_csiphy_params))) {
@@ -578,14 +596,6 @@ static long msm_csiphy_cmd(struct csiphy_device *csiphy_dev, void *arg)
 		rc = msm_csiphy_lane_config(csiphy_dev, &csiphy_params);
 		break;
 	case CSIPHY_RELEASE:
-		if (cdata->cfg_params_size !=
-			sizeof(struct msm_camera_csi_lane_params)) {
-			pr_err("%s:%d: size %d exp %d\n", __func__, __LINE__,
-				cdata->cfg_params_size,
-				sizeof(struct msm_camera_csi_lane_params));
-			rc = -EINVAL;
-			break;
-		}
 		if (copy_from_user(&csi_lane_params,
 			(void *)cdata->cfg.csi_lane_params,
 			sizeof(struct msm_camera_csi_lane_params))) {
@@ -596,7 +606,7 @@ static long msm_csiphy_cmd(struct csiphy_device *csiphy_dev, void *arg)
 		rc = msm_csiphy_release(csiphy_dev, &csi_lane_params);
 		break;
 	default:
-		pr_err("%s: %d failed\n", __func__, __LINE__);
+		pr_err_ratelimited("%s: %d failed\n", __func__, __LINE__);
 		rc = -ENOIOCTLCMD;
 		break;
 	}

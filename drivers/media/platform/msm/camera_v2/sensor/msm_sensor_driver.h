@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The LG Electronics. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -10,10 +10,11 @@
  * GNU General Public License for more details.
  */
 
-#ifndef __LGIT_OIS_ROHM_H
-#define __LGIT_OIS_ROHM_H
-#include "msm_ois.h"
+#ifndef MSM_SENSOR_DRIVER_H
+#define MSM_SENSOR_DRIVER_H
 
-void lgit_ois_rohm_init(struct msm_ois_ctrl_t *msm_ois_t);
+#include "msm_sensor.h"
+
+int32_t msm_sensor_driver_probe(void *setting);
 
 #endif

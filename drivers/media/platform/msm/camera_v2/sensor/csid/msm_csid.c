@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -13,6 +13,7 @@
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/ratelimit.h>
 #include <linux/irqreturn.h>
 #include "msm_csid.h"
 #include "msm_csid_hwreg.h"
@@ -101,7 +102,7 @@ static void msm_csid_set_debug_reg(void __iomem *csidbase,
 static void msm_csid_reset(struct csid_device *csid_dev)
 {
 	msm_camera_io_w(CSID_RST_STB_ALL, csid_dev->base + CSID_RST_CMD_ADDR);
-	wait_for_completion_interruptible(&csid_dev->reset_complete);
+	wait_for_completion(&csid_dev->reset_complete);
 	return;
 }
 
@@ -113,7 +114,7 @@ static int msm_csid_config(struct csid_device *csid_dev,
 	void __iomem *csidbase;
 	csidbase = csid_dev->base;
 	if (!csidbase || !csid_params) {
-		pr_err("%s:%d csidbase %pK, csid params %pK\n", __func__,
+		pr_err("%s:%d csidbase %p, csid params %p\n", __func__,
 			__LINE__, csidbase, csid_params);
 		return -EINVAL;
 	}
@@ -433,7 +434,7 @@ static long msm_csid_cmd(struct csid_device *csid_dev, void *arg)
 	struct csid_cfg_data *cdata = (struct csid_cfg_data *)arg;
 
 	if (!csid_dev || !cdata) {
-		pr_err("%s:%d csid_dev %pK, cdata %pK\n", __func__, __LINE__,
+		pr_err("%s:%d csid_dev %p, cdata %p\n", __func__, __LINE__,
 			csid_dev, cdata);
 		return -EINVAL;
 	}
@@ -445,22 +446,11 @@ static long msm_csid_cmd(struct csid_device *csid_dev, void *arg)
 			cdata->cfg.csid_version);
 		break;
 	case CSID_CFG: {
-		struct msm_sensor_csid_cfg_params *u_csid_cfg_params;
 		struct msm_camera_csid_params csid_params;
 		struct msm_camera_csid_vc_cfg *vc_cfg = NULL;
 		int8_t i = 0;
-		u_csid_cfg_params = &cdata->cfg.csid_cfg_params;
-		if (u_csid_cfg_params->csid_params_size !=
-			sizeof(csid_params)) {
-			pr_err("%s:%d invalid csid params size %d exp %d\n",
-				__func__, __LINE__,
-				u_csid_cfg_params->csid_params_size,
-				sizeof(csid_params));
-			rc = -EINVAL;
-			break;
-		}
 		if (copy_from_user(&csid_params,
-			(void *)u_csid_cfg_params->csid_params,
+			(void *)cdata->cfg.csid_params,
 			sizeof(struct msm_camera_csid_params))) {
 			pr_err("%s: %d failed\n", __func__, __LINE__);
 			rc = -EFAULT;
@@ -475,7 +465,7 @@ static long msm_csid_cmd(struct csid_device *csid_dev, void *arg)
 		}
 		for (i = 0; i < csid_params.lut_params.num_cid; i++) {
 			vc_cfg = kzalloc(sizeof(struct msm_camera_csid_vc_cfg),
-				GFP_KERNEL);
+			    GFP_KERNEL);
 			if (!vc_cfg) {
 				pr_err("%s: %d failed\n", __func__, __LINE__);
 				for (i--; i >= 0; i--)
@@ -483,19 +473,9 @@ static long msm_csid_cmd(struct csid_device *csid_dev, void *arg)
 				rc = -ENOMEM;
 				break;
 			}
-			if (csid_params.lut_params.vc_cfg_size !=
-				sizeof(struct msm_camera_csid_vc_cfg)) {
-				pr_err("%s:%d: invalid parameter %d\n", __func__, __LINE__,
-					csid_params.lut_params.vc_cfg_size);
-				kfree(vc_cfg);
-				for (i--; i >= 0; i--)
-					kfree(csid_params.lut_params.vc_cfg[i]);
-				rc = -EINVAL;
-				break;
-			}
 			if (copy_from_user(vc_cfg,
 				(void *)csid_params.lut_params.vc_cfg[i],
-				(sizeof(struct msm_camera_csid_vc_cfg)))) {
+				sizeof(struct msm_camera_csid_vc_cfg))) {
 				pr_err("%s: %d failed\n", __func__, __LINE__);
 				kfree(vc_cfg);
 				for (i--; i >= 0; i--)
@@ -510,7 +490,7 @@ static long msm_csid_cmd(struct csid_device *csid_dev, void *arg)
 			break;
 		}
 		rc = msm_csid_config(csid_dev, &csid_params);
-		for (i = 0; i < csid_params.lut_params.num_cid; i++)
+		for (i--; i >= 0; i--)
 			kfree(csid_params.lut_params.vc_cfg[i]);
 		break;
 	}
@@ -518,7 +498,7 @@ static long msm_csid_cmd(struct csid_device *csid_dev, void *arg)
 		rc = msm_csid_release(csid_dev);
 		break;
 	default:
-		pr_err("%s: %d failed\n", __func__, __LINE__);
+		pr_err_ratelimited("%s: %d failed\n", __func__, __LINE__);
 		rc = -ENOIOCTLCMD;
 		break;
 	}
