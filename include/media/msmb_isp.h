@@ -224,6 +224,11 @@ enum msm_vfe_reg_cfg_type {
 	VFE_READ_DMI_16BIT,
 	VFE_READ_DMI_32BIT,
 	VFE_READ_DMI_64BIT,
+	GET_SOC_HW_VER,
+	GET_MAX_CLK_RATE,
+	VFE_HW_UPDATE_LOCK,
+	VFE_HW_UPDATE_UNLOCK,
+	SET_WM_UB_SIZE,
 };
 
 struct msm_vfe_cfg_cmd2 {
