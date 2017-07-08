@@ -133,6 +133,7 @@ struct msm_vfe_axi_plane_cfg {
 struct msm_vfe_axi_stream_request_cmd {
 	uint32_t session_id;
 	uint32_t stream_id;
+    uint32_t vt_enable;
 	uint32_t output_format;/*Planar/RAW/Misc*/
 	enum msm_vfe_axi_stream_src stream_src; /*CAMIF/IDEAL/RDIs*/
 	struct msm_vfe_axi_plane_cfg plane_cfg[MAX_PLANES_PER_STREAM];
@@ -146,6 +147,7 @@ struct msm_vfe_axi_stream_request_cmd {
 	uint8_t buf_divert; /* if TRUE no vb2 buf done. */
 	/*Return values*/
 	uint32_t axi_stream_handle;
+    uint32_t burst_len;
 };
 
 struct msm_vfe_axi_stream_release_cmd {
@@ -169,13 +171,23 @@ enum msm_vfe_axi_stream_update_type {
 	DISABLE_STREAM_BUF_DIVERT,
 	UPDATE_STREAM_FRAMEDROP_PATTERN,
 	UPDATE_STREAM_REQUEST_FRAMES,
+    UPDATE_STREAM_AXI_CONFIG,
+};
+
+struct msm_vfe_axi_stream_cfg_update_info {
+	uint32_t stream_handle;
+	uint32_t output_format;
+	enum msm_vfe_frame_skip_pattern skip_pattern;
+	struct msm_vfe_axi_plane_cfg plane_cfg[MAX_PLANES_PER_STREAM];
 };
 
 struct msm_vfe_axi_stream_update_cmd {
+    uint32_t num_streams;
 	uint32_t stream_handle;
 	enum msm_vfe_axi_stream_update_type update_type;
 	enum msm_vfe_frame_skip_pattern skip_pattern;
 	uint32_t request_frm_num;
+    struct msm_vfe_axi_stream_cfg_update_info update_info[MAX_NUM_STREAM];
 };
 
 enum msm_isp_stats_type {
@@ -211,6 +223,7 @@ struct msm_vfe_stats_stream_cfg_cmd {
 	uint8_t num_streams;
 	uint32_t stream_handle[MSM_ISP_STATS_MAX];
 	uint8_t enable;
+    uint32_t stats_burst_len;
 };
 
 enum msm_vfe_reg_cfg_type {
@@ -333,6 +346,7 @@ struct msm_isp_buf_event {
 	uint32_t session_id;
 	uint32_t stream_id;
 	uint32_t handle;
+	uint32_t output_format;
 	int8_t buf_idx;
 };
 struct msm_isp_stats_event {
@@ -353,6 +367,7 @@ struct msm_isp_event_data {
 	struct timeval timestamp;
 	/* Monotonic timestamp since bootup */
 	struct timeval mono_timestamp;
+    enum msm_vfe_input_src input_intf;
 	/* if pix is a src frame_id is from camif */
 	uint32_t frame_id;
 	union {

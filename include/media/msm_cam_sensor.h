@@ -51,6 +51,10 @@
 
 #define MAX_EEPROM_NAME 32
 
+#define MAX_AF_ITERATIONS 3
+#define MAX_NUMBER_OF_STEPS 47
+#define MAX_POWER_CONFIG 12
+
 enum msm_camera_i2c_reg_addr_type {
 	MSM_CAMERA_I2C_BYTE_ADDR = 1,
 	MSM_CAMERA_I2C_WORD_ADDR,
@@ -323,16 +327,11 @@ struct sensorb_cfg_data {
 	uint32_t setting_size;
 };
 
-struct msm_sensor_csid_cfg_params {
-	struct msm_camera_csid_params *csid_params;
-	uint32_t                       csid_params_size;
-};
-
 struct csid_cfg_data {
 	enum csid_cfg_type_t cfgtype;
 	union {
 		uint32_t csid_version;
-		struct msm_sensor_csid_cfg_params csid_cfg_params;
+		struct msm_camera_csid_params *csid_params;
 	} cfg;
 };
 
@@ -350,6 +349,7 @@ enum eeprom_cfg_type_t {
 	CFG_EEPROM_GET_CAL_DATA,
 	CFG_EEPROM_READ_CAL_DATA,
 	CFG_EEPROM_WRITE_DATA,
+    CFG_EEPROM_GET_MM_INFO,
 };
 struct eeprom_get_t {
 	uint16_t num_bytes;
@@ -403,6 +403,9 @@ enum msm_actuator_cfg_type_t {
 	CFG_SET_ACTUATOR_INFO,
 	CFG_SET_DEFAULT_FOCUS,
 	CFG_MOVE_FOCUS,
+    CFG_SET_POSITION,
+	CFG_ACTUATOR_POWERDOWN,
+	CFG_ACTUATOR_POWERUP,
 };
 
 enum actuator_type {
@@ -420,9 +423,18 @@ enum msm_actuator_addr_type {
 	MSM_ACTUATOR_WORD_ADDR,
 };
 
+enum msm_actuator_i2c_operation {
+	MSM_ACT_WRITE = 0,
+	MSM_ACT_POLL,
+};
+
 struct reg_settings_t {
 	uint16_t reg_addr;
+	enum msm_actuator_addr_type addr_type;
 	uint16_t reg_data;
+	enum msm_actuator_data_type data_type;
+	enum msm_actuator_i2c_operation i2c_operation;
+	uint32_t delay;
 };
 
 struct region_params_t {
@@ -445,6 +457,7 @@ struct msm_actuator_move_params_t {
 	int16_t dest_step_pos;
 	int32_t num_steps;
 	int32_t num_steps_inf_pos;
+	uint16_t curr_lens_pos;
 	struct damping_params_t *ringing_params;
 };
 
@@ -500,6 +513,12 @@ enum af_camera_name {
 	ACTUATOR_WEB_CAM_2,
 };
 
+struct msm_actuator_set_position_t {
+	uint16_t number_of_steps;
+	uint16_t pos[MAX_NUMBER_OF_STEPS];
+	uint16_t delay[MAX_NUMBER_OF_STEPS];
+};
+
 struct msm_actuator_cfg_data {
 	int cfgtype;
 	uint8_t is_af_supported;
@@ -507,6 +526,7 @@ struct msm_actuator_cfg_data {
 		struct msm_actuator_move_params_t move;
 		struct msm_actuator_set_info_t set_info;
 		struct msm_actuator_get_info_t get_info;
+        struct msm_actuator_set_position_t setpos;
 		enum af_camera_name cam_name;
 	} cfg;
 };
