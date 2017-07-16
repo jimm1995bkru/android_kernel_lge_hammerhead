@@ -130,10 +130,23 @@ struct eeprom_map_t {
 	uint32_t delay;
 };
 
-struct eeprom_memory_map_t {
+struct eeprom_slave_add_t {
+	uint32_t addr;
+};
+
+struct msm_eeprom_memory_map_t {
 	struct eeprom_map_t page;
+	struct eeprom_map_t pageen;
 	struct eeprom_map_t poll;
 	struct eeprom_map_t mem;
+	struct eeprom_slave_add_t saddr;
+};
+
+struct msm_eeprom_memory_block_t {
+	struct msm_eeprom_memory_map_t *map;
+	uint32_t num_map;	/* number of map blocks */
+	uint8_t *mapdata;
+	uint32_t num_data;	/* size of total mapdata */
 };
 
 struct msm_eeprom_mm_t {
@@ -146,8 +159,6 @@ struct msm_eeprom_mm_t {
 struct msm_eeprom_board_info {
 	const char *eeprom_name;
 	uint16_t i2c_slaveaddr;
-	uint32_t num_blocks;
-	struct eeprom_memory_map_t *eeprom_map;
 	struct msm_camera_power_ctrl_t power_info;
     struct msm_eeprom_mm_t mm_data;
 };
